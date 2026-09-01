@@ -8,7 +8,7 @@
     "@types/jsonwebtoken": "^9.0.9"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "5"
   },
   "dependencies": {
     "jsonwebtoken": "^9.0.2"

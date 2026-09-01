@@ -5,6 +5,7 @@ import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError } from "./errors";
 
+const MAX_UPLOAD_SIZE = 10 << 20;
 type Thumbnail = {
   data: ArrayBuffer;
   mediaType: string;
@@ -38,6 +39,7 @@ export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
+  
   if (!videoId) {
     throw new BadRequestError("Invalid video ID");
   }
@@ -47,7 +49,15 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
 
   console.log("uploading thumbnail for video", videoId, "by user", userID);
 
-  // TODO: implement the upload here
+  const data = await req.formData();
+  const file = data.get("thumbnail");
+  
+  if (!(file instanceof File)) {
+    throw new BadRequestError("Thumbnail file missing");
+  }
+  
+  getMedia
+  
 
   return respondWithJSON(200, null);
 }
