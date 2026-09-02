@@ -1,9 +1,9 @@
 import { respondWithJSON } from "./json";
-import { cfg, type ApiConfig } from "../config";
+import { type ApiConfig } from "../config";
 import { type BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import { getBearerToken, validateJWT } from "../auth";
-import { getVideo, updateVideo, type Video } from "../db/videos";
+import { getVideo, updateVideo } from "../db/videos";
 import path from "path";
 
 const MAX_UPLOAD_LIMIT = 1 << 30;
@@ -42,10 +42,10 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const aspectRatio = await getVideoAspectRatio(savePath);
   const deletable = Bun.file(savePath);
 
-  video.videoURL = `${aspectRatio}/${videoName}`;
+  video.videoURL = `https://${cfg.s3CfDistribution}/${aspectRatio}/${videoName}`;
   updateVideo(cfg.db, video);
 
-  const s3file = cfg.s3Client.file(video.videoURL);
+  const s3file = cfg.s3Client.file(`${aspectRatio}/${videoName}`);
   await s3file.write(deletable, { type: fileType });
 
   deletable.delete();
@@ -103,19 +103,4 @@ export async function processVideoForFastStart(inputFilePath: string) {
   if ((await proc.exited) !== 0) throw new Error("Command failed");
 
   return outputPath;
-}
-
-export async function generatePresignedURL(
-  cfg: ApiConfig,
-  key: string,
-  expireTime: number,
-) {
-  return cfg.s3Client.presign(key, { expiresIn: expireTime });
-}
-
-export async function dbVideoToSignedVideo(cfg: ApiConfig, video: Video) {
-  if (!video.videoURL) return video;
-
-  const signed = await generatePresignedURL(cfg, video.videoURL, 300);
-  return { ...video, videoURL: signed };
 }
