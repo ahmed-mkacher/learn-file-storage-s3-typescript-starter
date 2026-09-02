@@ -1,11 +1,12 @@
 import { getBearerToken, validateJWT } from "../auth";
 import { respondWithJSON } from "./json";
-import { getVideo } from "../db/videos";
+import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
-import { BadRequestError, NotFoundError } from "./errors";
+import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 
 const MAX_UPLOAD_SIZE = 10 << 20;
+
 type Thumbnail = {
   data: ArrayBuffer;
   mediaType: string;
@@ -56,8 +57,19 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     throw new BadRequestError("Thumbnail file missing");
   }
   
-  getMedia
-  
+  const fileType = file.type;
+  const imageData = await file.arrayBuffer();
 
-  return respondWithJSON(200, null);
+  let video = getVideo(cfg.db, videoId);
+
+  if (video?.userID != userID)
+    throw new UserForbiddenError("Video is not available");
+
+  videoThumbnails.set(videoId, { data: imageData, mediaType: fileType });
+  const thumbnailLink = `http://localhost:${cfg.port}/api/thumbnails/${videoId}`;
+
+  video.thumbnailURL = thumbnailLink;
+  updateVideo(cfg.db, video);
+
+  return respondWithJSON(200, JSON.stringify(video));
 }
