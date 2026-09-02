@@ -29,9 +29,11 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const data = await req.formData();
   const file = data.get("thumbnail");
   
-  if (!(file instanceof File)) {
+  if (!(file instanceof File))
     throw new BadRequestError("Thumbnail file missing");
-  }
+
+  if (file.size > MAX_UPLOAD_SIZE)
+    throw new BadRequestError("Thumbnail file is too large");
   
   const fileType = file.type;
 
@@ -39,18 +41,18 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     throw new BadRequestError("Invalid file type");
 
   const fileExtension = fileType.split("/")[1];
-  const videoName = randomBytes(32).toString("base64url");
-  const fileName = `${videoName}.${fileExtension}`;
+  const thumbnailName = randomBytes(32).toString("base64url");
+  const fileName = `${thumbnailName}.${fileExtension}`;
   const savePath = path.join(cfg.assetsRoot, fileName);
-  Bun.write(savePath, file);
+  await Bun.write(savePath, file);
   
   let video = getVideo(cfg.db, videoId);
 
   if (video?.userID != userID)
     throw new UserForbiddenError("Video is not available");
 
-  const videoURL = `http://localhost:${cfg.port}/${savePath}`;
-  video.thumbnailURL = videoURL;
+  const thumbnailURL = `http://localhost:${cfg.port}/${savePath}`;
+  video.thumbnailURL = thumbnailURL;
   updateVideo(cfg.db, video);
 
   return respondWithJSON(200, JSON.stringify(video));
