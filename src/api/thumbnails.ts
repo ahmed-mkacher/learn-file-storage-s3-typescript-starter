@@ -12,32 +12,6 @@ type Thumbnail = {
   mediaType: string;
 };
 
-const videoThumbnails: Map<string, Thumbnail> = new Map();
-
-export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
-  const { videoId } = req.params as { videoId?: string };
-  if (!videoId) {
-    throw new BadRequestError("Invalid video ID");
-  }
-
-  const video = getVideo(cfg.db, videoId);
-  if (!video) {
-    throw new NotFoundError("Couldn't find video");
-  }
-
-  const thumbnail = videoThumbnails.get(videoId);
-  if (!thumbnail) {
-    throw new NotFoundError("Thumbnail not found");
-  }
-
-  return new Response(thumbnail.data, {
-    headers: {
-      "Content-Type": thumbnail.mediaType,
-      "Cache-Control": "no-store",
-    },
-  });
-}
-
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
   
@@ -59,16 +33,16 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   
   const fileType = file.type;
   const imageData = await file.arrayBuffer();
-
+  const imageBuffer = Buffer.from(imageData);
+  const image64 = imageBuffer.toString("base64");
+  const dataURL = `data:${fileType};base64,${image64}`;
+  
   let video = getVideo(cfg.db, videoId);
 
   if (video?.userID != userID)
     throw new UserForbiddenError("Video is not available");
 
-  videoThumbnails.set(videoId, { data: imageData, mediaType: fileType });
-  const thumbnailLink = `http://localhost:${cfg.port}/api/thumbnails/${videoId}`;
-
-  video.thumbnailURL = thumbnailLink;
+  video.thumbnailURL = dataURL;
   updateVideo(cfg.db, video);
 
   return respondWithJSON(200, JSON.stringify(video));
