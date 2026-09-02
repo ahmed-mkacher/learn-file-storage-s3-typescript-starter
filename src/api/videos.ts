@@ -1,7 +1,7 @@
 import { respondWithJSON } from "./json";
 import { type ApiConfig } from "../config";
-import type { BunRequest } from "bun";
-import { BadRequestError, UserForbiddenError } from "./errors";
+import { type BunRequest } from "bun";
+import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import { getBearerToken, validateJWT } from "../auth";
 import { getVideo, updateVideo } from "../db/videos";
 import path from "path";
@@ -18,6 +18,8 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
 
   let video = getVideo(cfg.db, videoId);
 
+  if (!video) throw new NotFoundError("Video not found");
+
   if (video?.userID != userID)
     throw new UserForbiddenError("Video is not available");
 
@@ -31,20 +33,74 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
     throw new BadRequestError("Video file is too large");
 
   const fileType = file.type;
-  if (fileType != "video/mp4") throw new BadRequestError("Invalid file type");
+  if (fileType !== "video/mp4") throw new BadRequestError("Invalid file type");
 
   const videoName = `${videoId}.mp4`;
-  const savePath = path.join(cfg.assetsRoot, videoName);
-  await Bun.write(savePath, file);
+  const videoPath = path.join(cfg.assetsRoot, videoName);
+  await Bun.write(videoPath, file);
+  const savePath = await processVideoForFastStart(videoPath);
+  const aspectRatio = await getVideoAspectRatio(savePath);
   const deletable = Bun.file(savePath);
 
-  const s3file = cfg.s3Client.file(videoName);
+  const s3file = cfg.s3Client.file(`${aspectRatio}/${videoName}`);
   await s3file.write(deletable, { type: fileType });
 
-  video.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${videoName}`;
+  video.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${aspectRatio}/${videoName}`;
   updateVideo(cfg.db, video);
 
-  await deletable.delete();
+  deletable.delete();
 
   return respondWithJSON(200, null);
+}
+
+export async function getVideoAspectRatio(filePath: string) {
+  const proc = Bun.spawn(
+    [
+      "ffprobe",
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      `stream=width,height`,
+      "-of",
+      "json",
+      filePath,
+    ],
+    {
+      stderr: "pipe",
+    },
+  );
+
+  if ((await proc.exited) !== 0) throw new Error("Command failed");
+
+  const output = await new Response(proc.stdout).text();
+  const width = JSON.parse(output).stream_groups[0].streams[0].width;
+  const height = JSON.parse(output).stream_groups[0].streams[0].height;
+
+  if (Math.floor(width / height) === Math.floor(16 / 9)) return "landscape";
+  else if (Math.floor(width / height) === Math.floor(9 / 16)) return "portrait";
+  else return "other";
+}
+
+export async function processVideoForFastStart(inputFilePath: string) {
+  const outputPath = `${inputFilePath.split(".mp4")[0]}.processed.mp4`;
+  const proc = Bun.spawn([
+    "ffmpeg",
+    "-i",
+    inputFilePath,
+    "-movflags",
+    "faststart",
+    "-map_metadata",
+    "0",
+    "-codec",
+    "copy",
+    "-f",
+    "mp4",
+    outputPath,
+  ]);
+
+  if ((await proc.exited) !== 0) throw new Error("Command failed");
+
+  return outputPath;
 }

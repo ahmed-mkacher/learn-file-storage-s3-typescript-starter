@@ -48,6 +48,8 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   
   let video = getVideo(cfg.db, videoId);
 
+  if (!video) throw new NotFoundError("Video not found");
+
   if (video?.userID != userID)
     throw new UserForbiddenError("Video is not available");
 
