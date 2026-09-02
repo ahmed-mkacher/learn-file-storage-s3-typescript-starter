@@ -5,6 +5,7 @@ import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import path from "path";
+import { randomBytes } from "crypto";
 
 const MAX_UPLOAD_SIZE = 10 << 20;
 
@@ -38,7 +39,8 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     throw new BadRequestError("Invalid file type");
 
   const fileExtension = fileType.split("/")[1];
-  const fileName = `${videoId}.${fileExtension}`;
+  const videoName = randomBytes(32).toString("base64url");
+  const fileName = `${videoName}.${fileExtension}`;
   const savePath = path.join(cfg.assetsRoot, fileName);
   Bun.write(savePath, file);
   
